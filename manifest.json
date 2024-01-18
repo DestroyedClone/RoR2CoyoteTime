@@ -1,0 +1,9 @@
+{
+  "name": "CoyoteTime",
+  "version_number": "0.0.0",
+  "website_url": "https://github.com/DestroyedClone/RoR2CoyoteTime",
+  "description": "Adds a small window of time to jump after walking off a platform",
+  "dependencies": [
+    "bbepis-BepInExPack-5.4.1905"
+  ]
+}
