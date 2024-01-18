@@ -15,52 +15,73 @@ using UnityEngine;
 namespace ror2coyotetime
 {
     [BepInDependency("com.rune580.riskofoptions", BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInPlugin("com.DestroyedClone.CoyoteTime", "Coyote Time", "1.0.0")]
+    [BepInPlugin(modGUID, "Coyote Time", "1.0.0")]
     public class Main : BaseUnityPlugin
     {
+        public const string modGUID = "com.DestroyedClone.CoyoteTime";
         public static ConfigEntry<float> cfgWindowOfTimeForActivation;
+        public static ConfigEntry<bool> cfgPlayerOnly;
+
+        public const float maxSeconds = 1f;
+        public const float minSeconds = 0f;
 
         public void Start()
         {
-            cfgWindowOfTimeForActivation = Config.Bind(string.Empty, "Time Window", 0.3f, "The amount of time in seconds that the character can walk off a platform before they can no longer jump.");
+            cfgWindowOfTimeForActivation = Config.Bind(string.Empty, "Time Window", 0.3f, "The amount of time in seconds that the character can walk off a platform before they can no longer jump. Range: 0.00 to 1.00 seconds.");
+            cfgPlayerOnly = Config.Bind("Server", "Player Only", true, "If true, then only players can activate coyote time. AI does not have the logic to use this correctly, though you can turn it on if you want to for some reason.");
 
             On.RoR2.CharacterMotor.OnLeaveStableGround += OnLeaveStableGround;
+            cfgWindowOfTimeForActivation.SettingChanged += CfgWindowOfTimeForActivation_SettingChanged;
 
-            if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("com.rune560.riskofoptions"))
+            if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("com.rune580.riskofoptions"))
             {
                 Compat_RiskOfOptions();
             }
         }
 
+        private void CfgWindowOfTimeForActivation_SettingChanged(object sender, System.EventArgs e)
+        {
+            if (cfgWindowOfTimeForActivation.Value < minSeconds)
+                cfgWindowOfTimeForActivation.Value = minSeconds;
+            else if (cfgWindowOfTimeForActivation.Value > maxSeconds)
+                cfgWindowOfTimeForActivation.Value = maxSeconds;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
         public void Compat_RiskOfOptions()
         {
-            ModSettingsManager.AddOption(new RiskOfOptions.Options.SliderOption(cfgWindowOfTimeForActivation));
-            ModSettingsManager.SetModDescription("Adds Coyote Time to RoR2", "com.DestroyedClone.CoyoteTime", "Coyote Time");
+            ModSettingsManager.SetModDescription("Adds Coyote Time to RoR2", modGUID, "Coyote Time");
+            ModSettingsManager.AddOption(new RiskOfOptions.Options.StepSliderOption(cfgWindowOfTimeForActivation, new RiskOfOptions.OptionConfigs.StepSliderConfig()
+            {
+                min = minSeconds,
+                max = maxSeconds,
+                //increment = 0.01f
+            }));
         }
 
         private void OnLeaveStableGround(On.RoR2.CharacterMotor.orig_OnLeaveStableGround orig, CharacterMotor self)
         {
             int initJumpCount = self.jumpCount;
             orig(self);
-            if (self.jumpCount != initJumpCount)
-            {
-                self.jumpCount = initJumpCount;
-                if (!self.gameObject.TryGetComponent(out RiskOfBulletstorm_CoyoteTimeController _))
+            if (!cfgPlayerOnly.Value || self.body.isPlayerControlled)
+                if (self.jumpCount != initJumpCount)
                 {
-                    EntityStateMachine entityStateMachine = EntityStateMachine.FindByCustomName(self.gameObject, "Body");
-                    if (entityStateMachine && entityStateMachine.IsInMainState())
+                    self.jumpCount = initJumpCount;
+                    if (!self.gameObject.TryGetComponent(out CoyoteTimeBehaviour _))
                     {
-                        RiskOfBulletstorm_CoyoteTimeController comp = self.gameObject.AddComponent<RiskOfBulletstorm_CoyoteTimeController>();
-                        comp.entityStateMachine = entityStateMachine;
-                        comp.characterMotor = self;
-                        comp.jumpCountOnStart = initJumpCount;
+                        EntityStateMachine entityStateMachine = EntityStateMachine.FindByCustomName(self.gameObject, "Body");
+                        if (entityStateMachine && entityStateMachine.IsInMainState())
+                        {
+                            CoyoteTimeBehaviour comp = self.gameObject.AddComponent<CoyoteTimeBehaviour>();
+                            comp.entityStateMachine = entityStateMachine;
+                            comp.characterMotor = self;
+                            comp.jumpCountOnStart = initJumpCount;
+                        }
                     }
                 }
-            }
         }
 
-        private class RiskOfBulletstorm_CoyoteTimeController : MonoBehaviour
+        private class CoyoteTimeBehaviour : MonoBehaviour
         {
             private float Duration => cfgWindowOfTimeForActivation.Value;
             public CharacterMotor characterMotor;
@@ -81,9 +102,9 @@ namespace ror2coyotetime
             {
                 age += Time.fixedDeltaTime;
 
-                if (characterMotor.isGrounded || age >= Duration)// || !entityStateMachine.IsInMainState())
+                if (characterMotor.jumpCount > jumpCountOnStart || characterMotor.isGrounded || age >= Duration)// || !entityStateMachine.IsInMainState())
                 {
-                    ConsumeJump();
+                    ConsumeJumpIfUnspent();
                     Destroy(this);
                 }
             }
@@ -93,7 +114,7 @@ namespace ror2coyotetime
                 characterMotor.useGravity = characterMotor.gravityParameters.CheckShouldUseGravity();
             }
 
-            public void ConsumeJump()
+            public void ConsumeJumpIfUnspent()
             {
                 if (!characterMotor.isGrounded)
                 {
