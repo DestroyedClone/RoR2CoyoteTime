@@ -22,12 +22,13 @@ namespace ror2coyotetime
         public static ConfigEntry<float> cfgWindowOfTimeForActivation;
         public static ConfigEntry<bool> cfgPlayerOnly;
 
-        public const float maxSeconds = 1f;
+        public const float maxSeconds = 0.6f;
         public const float minSeconds = 0f;
+        public const float incrementSeconds = 0.01f;
 
         public void Start()
         {
-            cfgWindowOfTimeForActivation = Config.Bind(string.Empty, "Time Window", 0.3f, "The amount of time in seconds that the character can walk off a platform before they can no longer jump. Range: 0.00 to 1.00 seconds.");
+            cfgWindowOfTimeForActivation = Config.Bind(string.Empty, "Time Window", 0.2f, $"The amount of time in seconds that the character can walk off a platform before they can no longer jump. Range: {minSeconds} to {maxSeconds} seconds. Recommendation: 0.1 seconds.");
             cfgPlayerOnly = Config.Bind("Server", "Player Only", true, "If true, then only players can activate coyote time. AI does not have the logic to use this correctly, though you can turn it on if you want to for some reason.");
 
             On.RoR2.CharacterMotor.OnLeaveStableGround += OnLeaveStableGround;
@@ -55,7 +56,7 @@ namespace ror2coyotetime
             {
                 min = minSeconds,
                 max = maxSeconds,
-                //increment = 0.01f
+                increment = incrementSeconds
             }));
         }
 
